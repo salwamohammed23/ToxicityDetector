@@ -29,13 +29,13 @@ def load_models():
             blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
             blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
         
-        # Initial check model
-        with st.spinner("Loading initial check model..."):
+        # Initial screening model
+        with st.spinner("Loading initial screening model..."):
             flan_pipe = pipeline("text2text-generation", model="google/flan-t5-base")
         
         # Detailed analysis model
         with st.spinner("Loading detailed analysis model..."):
-            model_path = "Model"
+            model_path = "Model/lora_distilbert_toxic_final"
             config = PeftConfig.from_pretrained(model_path)
             base_model = AutoModelForSequenceClassification.from_pretrained(
                 config.base_model_name_or_path,
@@ -54,18 +54,18 @@ def load_models():
         return blip_processor, blip_model, flan_pipe, lora_model, tokenizer, device
     
     except Exception as e:
-        st.error(f"An error occurred while loading the models: {str(e)}")
+        st.error(f"Error loading models: {str(e)}")
         return None, None, None, None, None, None
 
-# Label definitions
+# Define categories
 LABELS = {
     0: {"name": "Safe", "emoji": "✅", "color": "green"},
-    1: {"name": "Hate Speech", "emoji": "💢", "color": "red"},
+    1: {"name": "Hate speech", "emoji": "💢", "color": "red"},
     2: {"name": "Insult", "emoji": "🗯️", "color": "orange"},
     3: {"name": "Threat", "emoji": "⚠️", "color": "red"},
     4: {"name": "Racist", "emoji": "🚫", "color": "red"},
     5: {"name": "Sexual", "emoji": "🔞", "color": "red"},
-    6: {"name": "Incitement", "emoji": "🔥", "color": "orange"},
+    6: {"name": "Provocation", "emoji": "🔥", "color": "orange"},
     7: {"name": "Other", "emoji": "❓", "color": "gray"},
     8: {"name": "Self-harm", "emoji": "💔", "color": "red"}
 }
@@ -82,7 +82,7 @@ def main():
     
     if input_type == "Image":
         uploaded_file = st.file_uploader(
-            "Upload an image for analysis:",
+            "Upload image for analysis:",
             type=["jpg", "jpeg", "png"],
             key="image_uploader"
         )
@@ -99,19 +99,18 @@ def main():
                         out = blip_model.generate(**inputs)
                         caption = blip_processor.decode(out[0], skip_special_tokens=True)
                         
-                        st.success(f"**Generated Caption:** {caption}")
+                        st.success(f"**Caption:** {caption}")
                         
-                        # Initial safety check
-                        st.subheader("🔍 Initial Safety Check")
-                        prompt = f"Is this content safe or unsafe? \"{caption}\" Answer with one word only: Safe or Unsafe."
+                        # Initial screening
+                        st.subheader("🔍 Initial Screening")
+                        prompt = f"Is this content safe or unsafe? \"{caption}\" Answer with one word only: safe or unsafe."
                         initial_check = flan_pipe(prompt, max_new_tokens=10)[0]['generated_text'].strip().lower()
                         
                         if "unsafe" in initial_check:
-                            st.error("## ❌ Initial Check: Unsafe Content")
-                            st.error("This content was flagged as potentially unsafe in initial screening.")
-                            st.stop()
+                            st.error("## ❌ Initial Screening Result: Unsafe Content")
+                            st.error("Unsafe content detected in initial screening.")
                         else:
-                            st.success("## ✅ Initial Check: Safe Content")
+                            st.success("## ✅ Initial Screening Result: Safe Content")
                             
                             # Detailed analysis
                             st.subheader("🔎 Detailed Analysis")
@@ -134,11 +133,11 @@ def main():
                             st.markdown(f"""
                             <div style='background-color:#f0f0f0; padding:15px; border-radius:10px; border-left:5px solid {label["color"]}'>
                                 <h3 style='color:{label["color"]}'>{label["emoji"]} Classification: <strong>{label["name"]}</strong></h3>
-                                <p>Confidence Level: {confidence:.2%}</p>
+                                <p>Confidence level: {confidence:.2%}</p>
                             </div>
                             """, unsafe_allow_html=True)
                             
-                            st.write("### Probability Distribution by Category:")
+                            st.write("### Probability Distribution:")
                             for i, prob in enumerate(probs[0]):
                                 label_info = LABELS[i]
                                 cols = st.columns([1, 3, 1])
@@ -147,7 +146,7 @@ def main():
                                 cols[2].write(f"{prob.item():.2%}")
                             
                     except Exception as e:
-                        st.error(f"An error occurred during image analysis: {str(e)}")
+                        st.error(f"Error analyzing image: {str(e)}")
     
     elif input_type == "Text":
         text_content = st.text_area(
@@ -159,21 +158,20 @@ def main():
         
         if st.button("Analyze Text", key="analyze_text"):
             if not text_content.strip():
-                st.warning("Please enter some text to analyze")
+                st.warning("Please enter text to analyze")
             else:
                 with st.spinner("Analyzing text..."):
                     try:
-                        # Initial safety check
-                        st.subheader("🔍 Initial Safety Check")
-                        prompt = f"Is this content safe or unsafe? \"{text_content}\" Answer with one word only: Safe or Unsafe."
+                        # Initial screening
+                        st.subheader("🔍 Initial Screening")
+                        prompt = f"Is this content safe or unsafe? \"{text_content}\" Answer with one word only: safe or unsafe."
                         initial_check = flan_pipe(prompt, max_new_tokens=10)[0]['generated_text'].strip().lower()
                         
                         if "unsafe" in initial_check:
-                            st.error("## ❌ Initial Check: Unsafe Content")
-                            st.error("This content was flagged as potentially unsafe in initial screening.")
-                            st.stop()
+                            st.error("## ❌ Initial Screening Result: Unsafe Content")
+                            st.error("Unsafe content detected in initial screening.")
                         else:
-                            st.success("## ✅ Initial Check: Safe Content")
+                            st.success("## ✅ Initial Screening Result: Safe Content")
                             
                             # Detailed analysis
                             st.subheader("🔎 Detailed Analysis")
@@ -196,11 +194,11 @@ def main():
                             st.markdown(f"""
                             <div style='background-color:#f0f0f0; padding:15px; border-radius:10px; border-left:5px solid {label["color"]}'>
                                 <h3 style='color:{label["color"]}'>{label["emoji"]} Classification: <strong>{label["name"]}</strong></h3>
-                                <p>Confidence Level: {confidence:.2%}</p>
+                                <p>Confidence level: {confidence:.2%}</p>
                             </div>
                             """, unsafe_allow_html=True)
                             
-                            st.write("### Probability Distribution by Category:")
+                            st.write("### Probability Distribution:")
                             for i, prob in enumerate(probs[0]):
                                 label_info = LABELS[i]
                                 cols = st.columns([1, 3, 1])
@@ -209,7 +207,7 @@ def main():
                                 cols[2].write(f"{prob.item():.2%}")
                     
                     except Exception as e:
-                        st.error(f"An error occurred during text analysis: {str(e)}")
+                        st.error(f"Error analyzing text: {str(e)}")
 
 if __name__ == "__main__":
     main()
