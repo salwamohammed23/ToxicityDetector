@@ -35,7 +35,7 @@ def load_models():
         
         # Detailed analysis model
         with st.spinner("Loading detailed analysis model..."):
-            model_path = "Model"
+            model_path = "Model/lora_distilbert_toxic_final"
             config = PeftConfig.from_pretrained(model_path)
             base_model = AutoModelForSequenceClassification.from_pretrained(
                 config.base_model_name_or_path,
@@ -69,6 +69,39 @@ LABELS = {
     7: {"name": "Other", "emoji": "❓", "color": "gray"},
     8: {"name": "Self-harm", "emoji": "💔", "color": "red"}
 }
+
+def perform_detailed_analysis(content, lora_model, tokenizer, device):
+    """Helper function to perform detailed analysis"""
+    inputs = tokenizer(
+        content,
+        return_tensors="pt",
+        truncation=True,
+        padding=True,
+        max_length=256
+    ).to(device)
+    
+    with torch.no_grad():
+        outputs = lora_model(**inputs)
+        probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+    
+    pred_idx = torch.argmax(probs).item()
+    confidence = probs[0][pred_idx].item()
+    label = LABELS[pred_idx]
+    
+    st.markdown(f"""
+    <div style='background-color:#f0f0f0; padding:15px; border-radius:10px; border-left:5px solid {label["color"]}'>
+        <h3 style='color:{label["color"]}'>{label["emoji"]} Classification: <strong>{label["name"]}</strong></h3>
+        <p>Confidence level: {confidence:.2%}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.write("### Probability Distribution:")
+    for i, prob in enumerate(probs[0]):
+        label_info = LABELS[i]
+        cols = st.columns([1, 3, 1])
+        cols[0].markdown(f"**{label_info['emoji']} {label_info['name']}**")
+        cols[1].progress(prob.item(), text=f"{prob.item():.2%}")
+        cols[2].write(f"{prob.item():.2%}")
 
 def main():
     blip_processor, blip_model, flan_pipe, lora_model, tokenizer, device = load_models()
@@ -108,43 +141,13 @@ def main():
                         
                         if "unsafe" in initial_check:
                             st.error("## ❌ Initial Screening Result: Unsafe Content")
-                            st.error("Unsafe content detected in initial screening.")
                         else:
                             st.success("## ✅ Initial Screening Result: Safe Content")
-                            
-                            # Detailed analysis
-                            st.subheader("🔎 Detailed Analysis")
-                            inputs = tokenizer(
-                                caption,
-                                return_tensors="pt",
-                                truncation=True,
-                                padding=True,
-                                max_length=256
-                            ).to(device)
-                            
-                            with torch.no_grad():
-                                outputs = lora_model(**inputs)
-                                probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-                            
-                            pred_idx = torch.argmax(probs).item()
-                            confidence = probs[0][pred_idx].item()
-                            label = LABELS[pred_idx]
-                            
-                            st.markdown(f"""
-                            <div style='background-color:#f0f0f0; padding:15px; border-radius:10px; border-left:5px solid {label["color"]}'>
-                                <h3 style='color:{label["color"]}'>{label["emoji"]} Classification: <strong>{label["name"]}</strong></h3>
-                                <p>Confidence level: {confidence:.2%}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            st.write("### Probability Distribution:")
-                            for i, prob in enumerate(probs[0]):
-                                label_info = LABELS[i]
-                                cols = st.columns([1, 3, 1])
-                                cols[0].markdown(f"**{label_info['emoji']} {label_info['name']}**")
-                                cols[1].progress(prob.item(), text=f"{prob.item():.2%}")
-                                cols[2].write(f"{prob.item():.2%}")
-                            
+                        
+                        # Always perform detailed analysis
+                        st.subheader("🔎 Detailed Analysis")
+                        perform_detailed_analysis(caption, lora_model, tokenizer, device)
+                    
                     except Exception as e:
                         st.error(f"Error analyzing image: {str(e)}")
     
@@ -169,42 +172,12 @@ def main():
                         
                         if "unsafe" in initial_check:
                             st.error("## ❌ Initial Screening Result: Unsafe Content")
-                            st.error("Unsafe content detected in initial screening.")
                         else:
                             st.success("## ✅ Initial Screening Result: Safe Content")
-                            
-                            # Detailed analysis
-                            st.subheader("🔎 Detailed Analysis")
-                            inputs = tokenizer(
-                                text_content,
-                                return_tensors="pt",
-                                truncation=True,
-                                padding=True,
-                                max_length=256
-                            ).to(device)
-                            
-                            with torch.no_grad():
-                                outputs = lora_model(**inputs)
-                                probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-                            
-                            pred_idx = torch.argmax(probs).item()
-                            confidence = probs[0][pred_idx].item()
-                            label = LABELS[pred_idx]
-                            
-                            st.markdown(f"""
-                            <div style='background-color:#f0f0f0; padding:15px; border-radius:10px; border-left:5px solid {label["color"]}'>
-                                <h3 style='color:{label["color"]}'>{label["emoji"]} Classification: <strong>{label["name"]}</strong></h3>
-                                <p>Confidence level: {confidence:.2%}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            st.write("### Probability Distribution:")
-                            for i, prob in enumerate(probs[0]):
-                                label_info = LABELS[i]
-                                cols = st.columns([1, 3, 1])
-                                cols[0].markdown(f"**{label_info['emoji']} {label_info['name']}**")
-                                cols[1].progress(prob.item(), text=f"{prob.item():.2%}")
-                                cols[2].write(f"{prob.item():.2%}")
+                        
+                        # Always perform detailed analysis
+                        st.subheader("🔎 Detailed Analysis")
+                        perform_detailed_analysis(text_content, lora_model, tokenizer, device)
                     
                     except Exception as e:
                         st.error(f"Error analyzing text: {str(e)}")
