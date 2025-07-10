@@ -35,7 +35,7 @@ def load_models():
         
         # Detailed analysis model
         with st.spinner("Loading detailed analysis model..."):
-            model_path = "Model/lora_distilbert_toxic_final"
+            model_path = "Model"
             config = PeftConfig.from_pretrained(model_path)
             base_model = AutoModelForSequenceClassification.from_pretrained(
                 config.base_model_name_or_path,
