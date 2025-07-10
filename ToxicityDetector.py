@@ -73,10 +73,6 @@ LABELS = {
 def main():
     blip_processor, blip_model, flan_pipe, lora_model, tokenizer, device = load_models()
     
-    # Refresh button
-    if st.button("🔄 Refresh Page"):
-        st.experimental_rerun()
-    
     input_type = st.radio(
         "Select content type:",
         ["Text", "Image"],
