@@ -35,7 +35,7 @@ def load_models():
         
         # Detailed analysis model
         with st.spinner("Loading detailed analysis model..."):
-            model_path = "Model"
+            model_path = "Model/lora_distilbert_toxic_final"
             config = PeftConfig.from_pretrained(model_path)
             base_model = AutoModelForSequenceClassification.from_pretrained(
                 config.base_model_name_or_path,
@@ -70,28 +70,6 @@ LABELS = {
     8: {"name": "Self-harm", "emoji": "💔", "color": "red"}
 }
 
-# Initial safety check function
-def initial_safety_check(text, flan_pipe):
-    prompt = f"Is this content safe or unsafe? \"{text}\" Answer with one word only: Safe or Unsafe."
-    result = flan_pipe(prompt, max_new_tokens=10)
-    return result[0]['generated_text'].strip()
-
-# Detailed analysis function
-def detailed_analysis(text, lora_model, tokenizer, device):
-    inputs = tokenizer(
-        text,
-        return_tensors="pt",
-        truncation=True,
-        padding=True,
-        max_length=256
-    ).to(device)
-    
-    with torch.no_grad():
-        outputs = lora_model(**inputs)
-        probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-    
-    return probs[0].tolist()
-
 def main():
     blip_processor, blip_model, flan_pipe, lora_model, tokenizer, device = load_models()
     
@@ -125,93 +103,117 @@ def main():
                         out = blip_model.generate(**inputs)
                         caption = blip_processor.decode(out[0], skip_special_tokens=True)
                         
-                        st.success(f"**Caption:** {caption}")
+                        st.success(f"**Generated Caption:** {caption}")
                         
-                        # Initial check
+                        # Initial safety check
                         st.subheader("🔍 Initial Safety Check")
-                        initial_check = initial_safety_check(caption, flan_pipe)
+                        prompt = f"Is this content safe or unsafe? \"{caption}\" Answer with one word only: Safe or Unsafe."
+                        initial_check = flan_pipe(prompt, max_new_tokens=10)[0]['generated_text'].strip().lower()
                         
-                        if "unsafe" in initial_check.lower():
-                            st.error("## ❌ Initial Check Result: Unsafe Content")
-                            st.error("Unsafe content detected in the initial check. Analysis stopped.")
+                        if "unsafe" in initial_check:
+                            st.error("## ❌ Initial Check: Unsafe Content")
+                            st.error("This content was flagged as potentially unsafe in initial screening.")
                             st.stop()
                         else:
-                            st.success("## ✅ Initial Check Result: Safe Content")
+                            st.success("## ✅ Initial Check: Safe Content")
                             
                             # Detailed analysis
                             st.subheader("🔎 Detailed Analysis")
-                            probs = detailed_analysis(caption, lora_model, tokenizer, device)
-                            pred_idx = probs.index(max(probs))
-                            confidence = probs[pred_idx]
+                            inputs = tokenizer(
+                                caption,
+                                return_tensors="pt",
+                                truncation=True,
+                                padding=True,
+                                max_length=256
+                            ).to(device)
+                            
+                            with torch.no_grad():
+                                outputs = lora_model(**inputs)
+                                probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+                            
+                            pred_idx = torch.argmax(probs).item()
+                            confidence = probs[0][pred_idx].item()
                             label = LABELS[pred_idx]
                             
                             st.markdown(f"""
                             <div style='background-color:#f0f0f0; padding:15px; border-radius:10px; border-left:5px solid {label["color"]}'>
-                                <h3 style='color:{label["color"]}'>{label["emoji"]} Category: <strong>{label["name"]}</strong></h3>
+                                <h3 style='color:{label["color"]}'>{label["emoji"]} Classification: <strong>{label["name"]}</strong></h3>
                                 <p>Confidence Level: {confidence:.2%}</p>
                             </div>
                             """, unsafe_allow_html=True)
                             
-                            st.write("### Probability Distribution:")
-                            for i, prob in enumerate(probs):
+                            st.write("### Probability Distribution by Category:")
+                            for i, prob in enumerate(probs[0]):
                                 label_info = LABELS[i]
                                 cols = st.columns([1, 3, 1])
                                 cols[0].markdown(f"**{label_info['emoji']} {label_info['name']}**")
-                                cols[1].progress(prob, text=f"{prob:.2%}")
-                                cols[2].write(f"{prob:.2%}")
+                                cols[1].progress(prob.item(), text=f"{prob.item():.2%}")
+                                cols[2].write(f"{prob.item():.2%}")
                             
                     except Exception as e:
-                        st.error(f"An error occurred while analyzing the image: {str(e)}")
+                        st.error(f"An error occurred during image analysis: {str(e)}")
     
     elif input_type == "Text":
         text_content = st.text_area(
             "Enter text for analysis:",
             height=200,
-            placeholder="Paste your text here...",
+            placeholder="Paste text here...",
             key="text_input"
         )
         
         if st.button("Analyze Text", key="analyze_text"):
             if not text_content.strip():
-                st.warning("Please enter some text to analyze.")
+                st.warning("Please enter some text to analyze")
             else:
                 with st.spinner("Analyzing text..."):
                     try:
-                        # Initial check
+                        # Initial safety check
                         st.subheader("🔍 Initial Safety Check")
-                        initial_check = initial_safety_check(text_content, flan_pipe)
+                        prompt = f"Is this content safe or unsafe? \"{text_content}\" Answer with one word only: Safe or Unsafe."
+                        initial_check = flan_pipe(prompt, max_new_tokens=10)[0]['generated_text'].strip().lower()
                         
-                        if "unsafe" in initial_check.lower():
-                            st.error("## ❌ Initial Check Result: Unsafe Content")
-                            st.error("Unsafe content detected in the initial check. Analysis stopped.")
+                        if "unsafe" in initial_check:
+                            st.error("## ❌ Initial Check: Unsafe Content")
+                            st.error("This content was flagged as potentially unsafe in initial screening.")
                             st.stop()
                         else:
-                            st.success("## ✅ Initial Check Result: Safe Content")
+                            st.success("## ✅ Initial Check: Safe Content")
                             
                             # Detailed analysis
                             st.subheader("🔎 Detailed Analysis")
-                            probs = detailed_analysis(text_content, lora_model, tokenizer, device)
-                            pred_idx = probs.index(max(probs))
-                            confidence = probs[pred_idx]
+                            inputs = tokenizer(
+                                text_content,
+                                return_tensors="pt",
+                                truncation=True,
+                                padding=True,
+                                max_length=256
+                            ).to(device)
+                            
+                            with torch.no_grad():
+                                outputs = lora_model(**inputs)
+                                probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+                            
+                            pred_idx = torch.argmax(probs).item()
+                            confidence = probs[0][pred_idx].item()
                             label = LABELS[pred_idx]
                             
                             st.markdown(f"""
                             <div style='background-color:#f0f0f0; padding:15px; border-radius:10px; border-left:5px solid {label["color"]}'>
-                                <h3 style='color:{label["color"]}'>{label["emoji"]} Category: <strong>{label["name"]}</strong></h3>
+                                <h3 style='color:{label["color"]}'>{label["emoji"]} Classification: <strong>{label["name"]}</strong></h3>
                                 <p>Confidence Level: {confidence:.2%}</p>
                             </div>
                             """, unsafe_allow_html=True)
                             
-                            st.write("### Probability Distribution:")
-                            for i, prob in enumerate(probs):
+                            st.write("### Probability Distribution by Category:")
+                            for i, prob in enumerate(probs[0]):
                                 label_info = LABELS[i]
                                 cols = st.columns([1, 3, 1])
                                 cols[0].markdown(f"**{label_info['emoji']} {label_info['name']}**")
-                                cols[1].progress(prob, text=f"{prob:.2%}")
-                                cols[2].write(f"{prob:.2%}")
+                                cols[1].progress(prob.item(), text=f"{prob.item():.2%}")
+                                cols[2].write(f"{prob.item():.2%}")
                     
                     except Exception as e:
-                        st.error(f"An error occurred while analyzing the text: {str(e)}")
+                        st.error(f"An error occurred during text analysis: {str(e)}")
 
 if __name__ == "__main__":
     main()
